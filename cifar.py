@@ -92,24 +92,27 @@ if use_cuda:
 
 best_acc = 0  # best test accuracy
 
-def main():
+def main(is_random_erasing = False):
     global best_acc
+    logfile_prefix = f"${args.dataset}_re" if is_random_erasing else f"${args.dataset}"
     start_epoch = args.start_epoch  # start from epoch 0 or last checkpoint epoch
 
     if not os.path.isdir(args.checkpoint):
         mkdir_p(args.checkpoint)
 
-
-
     # Data
     print('==> Preparing dataset %s' % args.dataset)
-    transform_train = transforms.Compose([
+    transform_list = [
         transforms.RandomCrop(32, padding=4),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-        transforms.RandomErasing(probability = args.p, sh = args.sh, r1 = args.r1, ),
-    ])
+    ]
+    if is_random_erasing:
+        transform_list.append(
+            transforms.RandomErasing(probability = args.p, sh = args.sh, r1 = args.r1, )
+        )
+    transform_train = transforms.Compose(transform_list)
 
     transform_test = transforms.Compose([
         transforms.ToTensor(),
@@ -144,7 +147,7 @@ def main():
                     depth=args.depth,
                 )
 
-    model = torch.nn.DataParallel(model).cuda()
+    model = torch.nn.DataParallel(model)#.cuda()
     cudnn.benchmark = True
     print('    Total params: %.2fM' % (sum(p.numel() for p in model.parameters())/1000000.0))
 
@@ -153,6 +156,7 @@ def main():
 
     # Resume
     title = 'cifar-10-' + args.arch
+
     if args.resume:
         # Load checkpoint.
         print('==> Resuming from checkpoint..')
@@ -163,9 +167,9 @@ def main():
         start_epoch = checkpoint['epoch']
         model.load_state_dict(checkpoint['state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer'])
-        logger = Logger(os.path.join(args.checkpoint, 'log.txt'), title=title, resume=True)
+        logger = Logger(os.path.join(args.checkpoint, logfile_prefix+'log.txt'), title=title, resume=True)
     else:
-        logger = Logger(os.path.join(args.checkpoint, 'log.txt'), title=title)
+        logger = Logger(os.path.join(args.checkpoint, logfile_prefix+'log.txt'), title=title)
         logger.set_names(['Learning Rate', 'Train Loss', 'Valid Loss', 'Train Acc.', 'Valid Acc.'])
 
 
@@ -200,9 +204,9 @@ def main():
 
     logger.close()
     logger.plot()
-    savefig(os.path.join(args.checkpoint, 'log.eps'))
+    savefig(os.path.join(args.checkpoint, logfile_prefix+'log.eps'))
 
-    print('Best acc:')
+    print(f'Best acc: ${args.dataset}_re')
     print(best_acc)
 
 def train(trainloader, model, criterion, optimizer, epoch, use_cuda):
@@ -326,4 +330,5 @@ def adjust_learning_rate(optimizer, epoch):
             param_group['lr'] = state['lr']
 
 if __name__ == '__main__':
-    main()
+    main(True)
+    main(False)
